@@ -1,5 +1,7 @@
 # Console Channel
 
+[![CI](https://github.com/opentalon/console-channel/actions/workflows/ci.yml/badge.svg)](https://github.com/opentalon/console-channel/actions/workflows/ci.yml)
+
 Standalone Go module: channel that runs OpenTalon in the terminal — **stdin** for user input, **stderr** for assistant replies. Used for local, interactive use.
 
 Can be used as a **standalone repo** (own `go.mod`) or as a subdirectory of the main OpenTalon repo.
