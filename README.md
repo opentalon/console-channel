@@ -13,8 +13,6 @@ Clone and build:
 ```bash
 git clone https://github.com/opentalon/console-channel.git
 cd console-channel
-go mod init github.com/opentalon/console-channel   # if go.mod doesn't exist
-go mod tidy
 make build   # → binary named "console", tell opentalon config path to this binary
 ```
 
