@@ -45,7 +45,15 @@ channels:
     enabled: true
     github: "opentalon/console-channel"
     ref: "master"
-    config: {}
+    config:
+      # Optional. When set, every InboundMessage carries
+      # Metadata["profile_token"] = <this value>, and the orchestrator
+      # resolves identity via profiles.who_am_i (entity_id + group). When
+      # unset the channel is anonymous and downstream identity-scoped
+      # consumers (e.g. tenant-scoped session listings) will not see
+      # these sessions. Most deployments leave the literal value in a
+      # `.env` file:
+      profile_token: "${OPENTALON_CONSOLE_PROFILE_TOKEN}"
 ```
 
 The first run clones the repo, builds the binary, and pins the resolved commit in `channels.lock`. Requires `git` and `go` on the host.
