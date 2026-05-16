@@ -17,14 +17,38 @@ const ID = "console"
 // Channel is a built-in channel that reads user input from stdin and
 // writes assistant replies to stdout. Used to run OpenTalon in the terminal.
 type Channel struct {
-	mu     sync.Mutex
-	done   chan struct{}
-	closed bool
+	mu           sync.Mutex
+	done         chan struct{}
+	closed       bool
+	profileToken string
 }
 
-// New returns a channel that uses stdin/stdout for I/O.
+// New returns a channel that uses stdin/stdout for I/O. Identity is
+// supplied later via Configure (see ConfigurableChannel in
+// opentalon/pkg/channel — websocket-channel uses the same pattern for
+// its server addr/path/CORS config); New itself captures no
+// environment or filesystem state.
 func New() *Channel {
 	return &Channel{done: make(chan struct{})}
+}
+
+// Configure implements channel.ConfigurableChannel. The host (OpenTalon
+// Core) invokes this with the `config:` block from channel YAML before
+// Start. Supported keys:
+//
+//   - profile_token (string): bearer the orchestrator resolves via
+//     profiles.who_am_i to derive entity_id + group, exactly like the
+//     ?token= query param on websocket-channel. When unset the channel
+//     is anonymous and downstream identity-scoped consumers (e.g.
+//     tenant-scoped session listings) will not see these sessions.
+//     Typically wired in YAML as
+//     `profile_token: "${OPENTALON_CONSOLE_PROFILE_TOKEN}"` so the
+//     value lives in a .env file rather than the committed config.
+func (c *Channel) Configure(config map[string]interface{}) error {
+	if v, ok := config["profile_token"].(string); ok {
+		c.profileToken = v
+	}
+	return nil
 }
 
 // ID implements channel.Channel.
@@ -47,7 +71,11 @@ func (c *Channel) Capabilities() channel.Capabilities {
 // goroutine that reads lines from stdin and sends them as InboundMessage to inbox.
 // When context is cancelled or stdin hits EOF, the goroutine closes the inbox and returns.
 func (c *Channel) Start(ctx context.Context, inbox chan<- channel.InboundMessage) error {
-	_, _ = fmt.Fprint(os.Stdout, "OpenTalon. Type a message and press Enter. Try 'hello' to run the hello-world plugin. Ctrl+D or Ctrl+C to exit.\n\n")
+	banner := "OpenTalon. Type a message and press Enter. Try 'hello' to run the hello-world plugin. Ctrl+D or Ctrl+C to exit."
+	if c.profileToken == "" {
+		banner += "\n[console-channel] profile_token not configured — sessions will be anonymous (no identity resolution)."
+	}
+	_, _ = fmt.Fprint(os.Stdout, banner+"\n\n")
 	go c.readLoop(ctx, inbox)
 	return nil
 }
@@ -85,6 +113,9 @@ func (c *Channel) readLoop(ctx context.Context, inbox chan<- channel.InboundMess
 				SenderName:     "user",
 				Content:        trimmed,
 				Timestamp:      time.Now(),
+			}
+			if c.profileToken != "" {
+				msg.Metadata = map[string]string{"profile_token": c.profileToken}
 			}
 			select {
 			case <-ctx.Done():

@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/opentalon/opentalon/pkg/channel"
 )
@@ -48,6 +49,91 @@ func TestNew(t *testing.T) {
 	}
 	if c.ID() != "console" {
 		t.Errorf("ID() = %q, want \"console\"", c.ID())
+	}
+}
+
+func TestConfigure_setsProfileToken(t *testing.T) {
+	c := New()
+	if err := c.Configure(map[string]interface{}{"profile_token": "tok-from-config"}); err != nil {
+		t.Fatalf("Configure() error: %v", err)
+	}
+	if c.profileToken != "tok-from-config" {
+		t.Errorf("profileToken = %q, want %q", c.profileToken, "tok-from-config")
+	}
+}
+
+func TestConfigure_emptyConfigLeavesTokenUnset(t *testing.T) {
+	c := New()
+	if err := c.Configure(map[string]interface{}{}); err != nil {
+		t.Fatalf("Configure() error: %v", err)
+	}
+	if c.profileToken != "" {
+		t.Errorf("profileToken = %q, want empty", c.profileToken)
+	}
+}
+
+func TestConfigure_ignoresNonStringValue(t *testing.T) {
+	c := New()
+	if err := c.Configure(map[string]interface{}{"profile_token": 42}); err != nil {
+		t.Fatalf("Configure() error: %v", err)
+	}
+	if c.profileToken != "" {
+		t.Errorf("profileToken = %q, want empty (non-string in config should be ignored)", c.profileToken)
+	}
+}
+
+func TestReadLoop_stampsProfileTokenWhenSet(t *testing.T) {
+	c := &Channel{done: make(chan struct{}), profileToken: "tok-abc"}
+	inbox := make(chan channel.InboundMessage, 1)
+
+	oldStdin := os.Stdin
+	r, w, _ := os.Pipe()
+	os.Stdin = r
+	defer func() { os.Stdin = oldStdin }()
+
+	_, _ = w.WriteString("hello\n")
+	_ = w.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.readLoop(ctx, inbox)
+
+	select {
+	case msg := <-inbox:
+		if got := msg.Metadata["profile_token"]; got != "tok-abc" {
+			t.Errorf("Metadata[profile_token] = %q, want %q", got, "tok-abc")
+		}
+		if msg.Content != "hello" {
+			t.Errorf("Content = %q, want %q", msg.Content, "hello")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for inbound message")
+	}
+}
+
+func TestReadLoop_noMetadataWhenProfileTokenUnset(t *testing.T) {
+	c := &Channel{done: make(chan struct{})}
+	inbox := make(chan channel.InboundMessage, 1)
+
+	oldStdin := os.Stdin
+	r, w, _ := os.Pipe()
+	os.Stdin = r
+	defer func() { os.Stdin = oldStdin }()
+
+	_, _ = w.WriteString("hello\n")
+	_ = w.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.readLoop(ctx, inbox)
+
+	select {
+	case msg := <-inbox:
+		if msg.Metadata != nil {
+			t.Errorf("Metadata = %v, want nil", msg.Metadata)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for inbound message")
 	}
 }
 
