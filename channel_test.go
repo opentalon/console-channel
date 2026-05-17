@@ -130,7 +130,7 @@ func TestNew_assignsFreshConversationID(t *testing.T) {
 		t.Errorf("conversationID length = %d, want 32", len(a.conversationID))
 	}
 	for _, ch := range a.conversationID {
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
 			t.Errorf("conversationID contains non-hex char %q in %q", ch, a.conversationID)
 			break
 		}
