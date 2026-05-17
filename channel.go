@@ -3,6 +3,7 @@ package consolechannel
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"os"
 	"sync"
@@ -16,11 +17,20 @@ const ID = "console"
 
 // Channel is a built-in channel that reads user input from stdin and
 // writes assistant replies to stdout. Used to run OpenTalon in the terminal.
+//
+// conversationID is minted once per process and stamped on every
+// InboundMessage. The orchestrator combines it with the authenticated
+// user_id (resolved from profile_token via whoami) to form the session_id
+// `<user>:console:<conversationID>`, so each process restart starts a
+// fresh session row rather than collapsing every terminal invocation into
+// a single stable `<user>:console:console` row. Mirrors the websocket-
+// channel pattern where each accept() mints its own convID.
 type Channel struct {
-	mu           sync.Mutex
-	done         chan struct{}
-	closed       bool
-	profileToken string
+	mu             sync.Mutex
+	done           chan struct{}
+	closed         bool
+	profileToken   string
+	conversationID string
 }
 
 // New returns a channel that uses stdin/stdout for I/O. Identity is
@@ -29,7 +39,10 @@ type Channel struct {
 // its server addr/path/CORS config); New itself captures no
 // environment or filesystem state.
 func New() *Channel {
-	return &Channel{done: make(chan struct{})}
+	return &Channel{
+		done:           make(chan struct{}),
+		conversationID: newID(),
+	}
 }
 
 // Configure implements channel.ConfigurableChannel. The host (OpenTalon
@@ -107,7 +120,7 @@ func (c *Channel) readLoop(ctx context.Context, inbox chan<- channel.InboundMess
 			}
 			msg := channel.InboundMessage{
 				ChannelID:      ID,
-				ConversationID: ID,
+				ConversationID: c.conversationID,
 				ThreadID:       "",
 				SenderID:       "user",
 				SenderName:     "user",
@@ -165,4 +178,14 @@ func (c *Channel) Stop() error {
 	c.closed = true
 	close(c.done)
 	return nil
+}
+
+// newID returns a fresh 32-char hex string for the per-process
+// ConversationID. Mirrors websocket-channel's newID — keeping the format
+// identical means session_id parsing on the orchestrator side stays
+// uniform across channels.
+func newID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%x", b)
 }

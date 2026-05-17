@@ -83,7 +83,7 @@ func TestConfigure_ignoresNonStringValue(t *testing.T) {
 }
 
 func TestReadLoop_stampsProfileTokenWhenSet(t *testing.T) {
-	c := &Channel{done: make(chan struct{}), profileToken: "tok-abc"}
+	c := &Channel{done: make(chan struct{}), profileToken: "tok-abc", conversationID: "conv-abc"}
 	inbox := make(chan channel.InboundMessage, 1)
 
 	oldStdin := os.Stdin
@@ -106,8 +106,37 @@ func TestReadLoop_stampsProfileTokenWhenSet(t *testing.T) {
 		if msg.Content != "hello" {
 			t.Errorf("Content = %q, want %q", msg.Content, "hello")
 		}
+		if msg.ChannelID != "console" {
+			t.Errorf("ChannelID = %q, want \"console\"", msg.ChannelID)
+		}
+		if msg.ConversationID != "conv-abc" {
+			t.Errorf("ConversationID = %q, want %q", msg.ConversationID, "conv-abc")
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for inbound message")
+	}
+}
+
+func TestNew_assignsFreshConversationID(t *testing.T) {
+	// Each New() must mint a unique 32-char hex ConversationID so that
+	// every process restart starts a fresh session row rather than
+	// collapsing every terminal invocation into a single stable id.
+	// Mirrors websocket-channel's newID() contract (length + hex
+	// alphabet).
+	a := New()
+	b := New()
+
+	if len(a.conversationID) != 32 {
+		t.Errorf("conversationID length = %d, want 32", len(a.conversationID))
+	}
+	for _, ch := range a.conversationID {
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
+			t.Errorf("conversationID contains non-hex char %q in %q", ch, a.conversationID)
+			break
+		}
+	}
+	if a.conversationID == b.conversationID {
+		t.Errorf("two New() calls produced identical conversationID %q — must be unique per process", a.conversationID)
 	}
 }
 
