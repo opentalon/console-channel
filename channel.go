@@ -67,6 +67,10 @@ func (c *Channel) Configure(config map[string]interface{}) error {
 // ID implements channel.Channel.
 func (c *Channel) ID() string { return ID }
 
+// Kind implements channel.Channel. The console runs as a single instance, so
+// its channel type and its per-instance ID are the same constant value.
+func (c *Channel) Kind() string { return ID }
+
 // Capabilities implements channel.Channel.
 func (c *Channel) Capabilities() channel.Capabilities {
 	return channel.Capabilities{
